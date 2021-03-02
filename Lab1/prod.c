@@ -18,7 +18,7 @@ int main(int argc, char *argv[]) {
     y = z = 1;
     iterations = 1000000000;
     startwtime = MPI_Wtime();
-       for (i = 0; i < iterations; i++) 
+       for (i = 0; i < 50*iterations; i++) 
 	    x = y * z + x;
     endwtime = MPI_Wtime();
     prodtime = (endwtime-startwtime) / (double) iterations;
