@@ -1,0 +1,135 @@
+#Sheeps. Worker nodes for a Web Dev cluster
+#
+# Usage:
+#    ansible-playbook --ask-vault DevOps-xxx.yaml
+#
+---
+- name: Cloning MVs. Sheeps for DevOps cluster
+  hosts: localhost
+  gather_facts: false
+
+# Variables
+# --
+
+# encrypted file with ansible-vault with the variable
+# {{ ovirt_password }} storing the IaaS ULL password
+
+  vars_files:
+    - alupass.yaml
+
+# SSH key for the user "ansible" 
+
+  vars:
+    ssh_keys: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGWdPaKUP/JoE3xzds/4a9DtOmD3vucEPZniTFGfwdj3gUFRJ/P62AlyiRVF8HXaOPmjzPzUnTEHxQIr6m6Pch/GjbYhk57Yp3B+F7HUQJ/rquSG/huNGLQMIOXpeGy1XT+tSLZobIwHbRSugU8QunCB8OupVhehvFaI+FqpUngo9gLo/bfFSZ7XtxzgUoeniPKdYZagVGfpfFwKTKoFGfK7IJAwOpgPmqCnoagCuaZIHeepnIxvZoyJqB4LRDSbH/DySOjuMzGveuKgFwyjWjFKsJBL5KgcZOF0DBmiBWkIJCKUU85yUbj4ApHwC2W4xiNTZ9z9GZDLeCXjRt6eQr ansible@control
+
+# IaaS user (change vblanco by aluxxx...)
+
+    ovirt_login: alu0101456713@ULL
+
+# Node names to create  (in these case, two "sheeps")
+
+    prefix: DevOps-group1
+    nodes:
+      - name: worker1
+        ip: 192.168.10.16
+      - name: worker2
+        ip: 192.168.10.17
+      - name: worker3
+        ip: 192.168.10.18
+      - name: worker
+        ip: 192.168.10.19
+      - name: worker5
+        ip: 192.168.10.20
+      - name: worker6
+        ip: 192.168.10.21
+      - name: worker7
+        ip: 192.168.10.22
+      - name: worker8
+        ip: 192.168.10.23
+
+# Private network profile assigned to each Lab group
+# See IaaS ULL portal
+
+    node_nics: 
+      - name: nic1
+        profile_name: DOC1
+      - name: nic2
+        profile_name: DOCP2P-4001
+
+# Tasks
+# ------
+
+  tasks:
+    - name: Login to IaaS
+      ovirt_auth:
+        url: https://iaas.ull.es/ovirt-engine/api
+        insecure: yes
+        username: "{{ ovirt_login }}"
+        password: "{{ ovirt_password }}"
+        headers:
+          filter: true
+
+    - name: Create a VM
+      ovirt_vm:
+        auth: "{{ ovirt_auth }}"
+        cluster: Cluster-Rojo
+        name: "{{ prefix }}-{{ item.name }}"
+        cpu_cores: 1
+        cpu_sockets: 1
+        memory: 1GiB
+        template: debian-10-sinred-cloudinit
+        nics: "{{ node_nics }}"
+        state: present
+        wait: yes
+      with_items: "{{ nodes }}"
+    
+    - name: Update VM via cloud-init
+      ovirt_vm:
+        auth: "{{ ovirt_auth }}"
+        name: "{{ prefix }}-{{ item.name }}"
+        state: running
+        cloud_init_nics:
+          - nic_name: ens3
+            nic_boot_protocol: dhcp
+            nic_on_boot: True
+          - nic_name: ens4
+            nic_boot_protocol: static
+            nic_ip_address: "{{ item.ip }}"
+            nic_netmask: 255.255.255.0
+            nic_gateway: 192.168.10.1
+            nic_on_boot: True
+        cloud_init:
+          host_name: "{{ item.name }}"
+          user_name: ansible
+
+# Passwd generated with mkpasswd -m SHA-512 alumno2020
+# Clear text password is: alumno2020
+          root_password: $6$3diC789eX$WZPkCdIrIm11cbZyhx/uwsydqgqEb1hsBvOXIF31ngjqxYhGyXMdaHZrwsf8vZHqEBoqPoXhWANPR/itAEU7l.
+          authorized_ssh_keys: "{{ ssh_keys }}"
+          custom_script: |
+            write_files:
+              - path: /etc/sudoers.d/ansible
+                permissions: '0644'
+                content: |
+                  ansible ALL=(ALL) NOPASSWD:ALL
+              - path: /tmp/saludos.txt
+                permissions: '0644'
+                content: |
+                  "Que pasa, Oveja"
+            runcmd:
+              - sed -i '/AllowUsers/c\AllowUsers adminstic usuario soporteiass ansible' /etc/ssh/sshd_config
+              - systemctl restart sshd
+              - apt update
+              - echo "192.168.10.15     manager" >> /etc/hosts
+              - apt install openssh-server -y
+              - apt install sshpass -y
+              - ssh-keygen -f -t -N ''
+              - sshpass -p "alumno2020" ssh-copy-id -o StrictHostKeyChecking=no ansible@manager
+              
+        wait: yes
+      with_items: "{{ nodes }}"
+
+    - name: Cleanup IaaS auth token
+      ovirt_auth:
+        ovirt_auth: "{{ ovirt_auth }}"
+        state: absent

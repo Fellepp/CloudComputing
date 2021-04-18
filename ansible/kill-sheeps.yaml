@@ -1,0 +1,43 @@
+---
+- name: Kill MVs. Nodes for DevOps
+  hosts: localhost
+  gather_facts: false
+
+  vars_files:
+    - alupass.yaml
+
+  vars:
+    ssh_keys: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCjsBsaXOE1p6dcDCtQpJg4OCT8VbYzMzgZzPt2PtFsJUKkLTCRmYxuLcJBG/tyvy5p3dgGjmbLx8W//vR8kmO4dR9JORPTgh6TeY7cvzbO8Cpxqk1K/V+/C+dmxj45J7HYi2cUy9U9ym+jay8C70whu8rNh+GpTUxNGHtYXEFUUWSv1P2xPb7ZbBxoMSU1i9uxsd4BAZNW6oi/1B5JPvIhIEPWjpEbxCLc8xnUO/mVF5JqU2EkFrPOvvr1VUNIiN3t8Y0tQzyu9gz+Lr+UOgukJH+yKatCRJTbAM1SGFWb7eMqV+CaVLoxzdMfweLWq8hmYwESFbUoWc1o7waXh7Tl usuario@AITIC-Ansible
+
+    ovirt_login: alu0101456713@ULL
+    prefix: CN-21
+    nodes:
+      - name: manager
+      - name: worker1
+      - name: worker2
+      - name: worker3
+      - name: worker4
+      - name: worker5
+      - name: worker6
+      - name: worker7
+  tasks:
+    - name: Login to IaaS
+      ovirt_auth: 
+        url: https://iaas.ull.es/ovirt-engine/api
+        insecure: yes
+        username: "{{ ovirt_login }}"
+        password: "{{ ovirt_password }}"
+        headers:
+          filter: true
+
+    - name: Stop and Remove a VM
+      ovirt_vm:
+        auth: "{{ ovirt_auth }}"
+        name: "{{ prefix }}-{{ item.name }}"
+        state: absent
+      with_items: "{{ nodes }}"
+    
+    - name: Cleanup IaaS auth token
+      ovirt_auth:
+        ovirt_auth: "{{ ovirt_auth }}"
+        state: absent

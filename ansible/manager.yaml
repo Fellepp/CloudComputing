@@ -1,0 +1,157 @@
+#Sheeps. Worker nodes for a Web Dev cluster
+#
+# Usage:
+#    ansible-playbook --ask-vault DevOps-xxx.yaml
+#
+---
+- name: Cloning MVs. Sheeps for DevOps cluster
+  hosts: localhost
+  gather_facts: false
+
+# Variables
+# --
+
+# encrypted file with ansible-vault with the variable
+# {{ ovirt_password }} storing the IaaS ULL password
+
+  vars_files:
+    - alupass.yaml
+
+# SSH key for the user "ansible" 
+
+  vars:
+    ssh_keys: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGWdPaKUP/JoE3xzds/4a9DtOmD3vucEPZniTFGfwdj3gUFRJ/P62AlyiRVF8HXaOPmjzPzUnTEHxQIr6m6Pch/GjbYhk57Yp3B+F7HUQJ/rquSG/huNGLQMIOXpeGy1XT+tSLZobIwHbRSugU8QunCB8OupVhehvFaI+FqpUngo9gLo/bfFSZ7XtxzgUoeniPKdYZagVGfpfFwKTKoFGfK7IJAwOpgPmqCnoagCuaZIHeepnIxvZoyJqB4LRDSbH/DySOjuMzGveuKgFwyjWjFKsJBL5KgcZOF0DBmiBWkIJCKUU85yUbj4ApHwC2W4xiNTZ9z9GZDLeCXjRt6eQr ansible@control
+
+# IaaS user (change vblanco by aluxxx...)
+
+    ovirt_login: alu0101456713@ULL
+
+# Node names to create  (in these case, two "sheeps")
+
+    prefix: CN-21
+    nodes:
+      - name: manager
+        ip: 192.168.10.15
+        #- name: worker2
+        #ip: 192.168.10.16
+        #- name: worker3
+        #ip: 192.168.10.17
+        #      - name: worker4
+        #        ip: 192.168.10.18
+        #      - name: worker5
+        #        ip: 192.168.10.19
+        #      - name: worker6
+        #        ip: 192.168.10.20
+        #      - name: worker7
+        #        ip: 192.168.10.21
+        #      - name: worker8
+        #        ip: 192.168.10.22
+
+# Private network profile assigned to each Lab group
+# See IaaS ULL portal
+
+    node_nics: 
+      - name: nic1
+        profile_name: DOC1
+      - name: nic2
+        profile_name: DOCP2P-4001
+
+# Tasks
+# ------
+
+  tasks:
+    - name: Login to IaaS
+      ovirt_auth:
+        url: https://iaas.ull.es/ovirt-engine/api
+        insecure: yes
+        username: "{{ ovirt_login }}"
+        password: "{{ ovirt_password }}"
+        headers:
+          filter: true
+
+    - name: Create a VM
+      ovirt_vm:
+        auth: "{{ ovirt_auth }}"
+        cluster: Cluster-Rojo
+        name: "{{ prefix }}-{{ item.name }}"
+        cpu_cores: 1
+        cpu_sockets: 1
+        memory: 1GiB
+        template: debian-10-sinred-cloudinit
+        nics: "{{ node_nics }}"
+        state: present
+        wait: yes
+      with_items: "{{ nodes }}"
+    
+    - name: Update VM via cloud-init
+      ovirt_vm:
+        auth: "{{ ovirt_auth }}"
+        name: "{{ prefix }}-{{ item.name }}"
+        state: running
+        cloud_init_nics:
+          - nic_name: ens3
+            nic_boot_protocol: dhcp
+            nic_on_boot: True
+          - nic_name: ens4
+            nic_boot_protocol: static
+            nic_ip_address: "{{ item.ip }}"
+            nic_netmask: 255.255.255.0
+            nic_gateway: 192.168.10.1
+            nic_on_boot: True
+        cloud_init:
+          host_name: "{{ item.name }}"
+          user_name: ansible
+
+# Passwd generated with mkpasswd -m SHA-512 alumno2020
+# Clear text password is: alumno2020
+          root_password: $6$3diC789eX$WZPkCdIrIm11cbZyhx/uwsydqgqEb1hsBvOXIF31ngjqxYhGyXMdaHZrwsf8vZHqEBoqPoXhWANPR/itAEU7l.
+          authorized_ssh_keys: "{{ ssh_keys }}"
+          custom_script: |
+            write_files:
+              - path: /etc/sudoers.d/ansible
+                permissions: '0644'
+                content: |
+                  ansible ALL=(ALL) NOPASSWD:ALL
+              - path: /tmp/saludos.txt
+                permissions: '0644'
+                content: |
+                  "Que pasa, Oveja"
+            runcmd:
+              - sed -i '/AllowUsers/c\AllowUsers adminstic usuario soporteiass ansible' /etc/ssh/sshd_config
+              - systemctl restart sshd
+              - apt update -y
+              - echo "192.168.10.15     manager" >> /etc/hosts 
+              - echo "192.168.10.16     worker1" >> /etc/hosts
+              - echo "192.168.10.17     worker2" >> /etc/hosts
+              - echo "192.168.10.18     worker3" >> /etc/hosts
+              - echo "192.168.10.19     worker4" >> /etc/hosts
+              - echo "192.168.10.20     worker5" >> /etc/hosts
+              - echo "192.168.10.21     worker6" >> /etc/hosts
+              - echo "192.168.10.22     worker7" >> /etc/hosts
+              - apt install openssh-server -y
+              - cd /home/ansible
+              - mkdir .ssh
+              - cd .ssh
+              - touch id_rsa
+              - touch authorized_keys
+              - echo "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcnNhAAAAAwEAAQAAAQEAwFId00zY/09arKR+WpeoBoYlQPvVWaV6RVrpKLbS9hPPP0QTk5qq1Mk0U0jg2TFUZOoaoCWvTgDoP75xX7GwBvLhZHJ79lifGf+gOLTCWR91qwOwQpcnNTqb4X6i9UGeAwgwvH1KDkaEGVFUcANxcIpM97KOy1otwxf2VddnreXVyxDfuk57IZ/Y3b0pVCuMt5ss9q8RYKN3o0VCJoYZcUXe4TKA9F/epwwl5cS1Bs/K7yz2xSdz1BcX0RCABCba6IPWv3/m0BFTEThYJFsCM7tExHOMkfsm9lXBEnXa+ZejWoJKJ8ugf11L5+5V24XC95gSTdn4FvpIeO/dxV7cqQAAA8hzoaJ8c6GifAAAAAdzc2gtcnNhAAABAQDAUh3TTNj/T1qspH5al6gGhiVA+9VZpXpFWukottL2E88/RBOTmqrUyTRTSODZMVRk6hqgJa9OAOg/vnFfsbAG8uFkcnv2WJ8Z/6A4tMJZH3WrA7BClyc1OpvhfqL1QZ4DCDC8fUoORoQZUVRwA3Fwikz3so7LWi3DF/ZV12et5dXLEN+6Tnshn9jdvSlUK4y3myz2rxFgo3ejRUImhhlxRd7hMoD0X96nDCXlxLUGz8rvLPbFJ3PUFxfREIAEJtrog9a/f+bQEVMROFgkWwIzu0TEc4yR+yb2VcESddr5l6Nagkony6B/XUvn7lXbhcL3mBJN2fgW+kh4793FXtypAAAAAwEAAQAAAQB98QhxB+EOiEPDzNCluKyi4RPiU0gqtY+1fUw0ikzqMpzEPGtpfJ6kS8KFS7Na58/xadDX0PXU6gktPSR3Wx//3Ou24LXG49AEsX6Vw+GFhXGD9R1m7h8R33iXGVvTqg20xJdNx+pIIOt+vODDna2a2iZ/CqIyDrLrEHUTT8Uofbh+AAp1scT56lf96yQbEkODBNWFh7N9cij8acejcG4nKFc8LEq0gL8TSSiL4xPSbHvfQp5RInVxIeIuhBZMLmfKzaM9OzRHxIYC8uLfAZdQhw8C1tN0NITR/IVAKPKlgCUYEKNn+I7YPT4D3yJquM6Ukkylk16Vu+afTzLcfKIBAAAAgBRlsbrpGSXCKeRa3Q44WJR0pc4U9Po5w7dNasm3v2Ks6tzcJeeE8fLGSm3Vs/KjdjDR1FBBOaeIzEbEKKURmYTjI/XpHGV5hNtwqbBsYGjr5aKFHZp6IAge6iMmbSjpKxKsefAygOr4YbV7MMXkJV6BOFK9R7EqwE/4f69M2T77AAAAgQDfiqxsOFfuRZTYj782EjrBALYKoROdAHdI22S80vZZCriq+z5jfTC9T+7kNz/UGLHvXUZKNDjVVnqEuE2UMzKHoYpsUY24pjMJmVvJ+rr6n6RsBB+COHIIWLBTqbqbmMgg6QjuySXy55SKQQeftgvTXEuAM77KXpC5K6diiCTsQQAAAIEA3D7r/DicLrKpbqTJtu0gxM+tdaOzIStCVxOwCXY6znBOr+nek4Iac7wTlprtH+97FTwxZ/neqMbam9bK+BQj1jIkVWvoyEscyJwCk8tQz/1qwlXdq08mlWTVX2YzerQSQqV0Za34UX6WZ4OeCcVHAsy83dWanrJnFpAiTGRUdmkAAAAPYW5zaWJsZUBtYW5hZ2VyAQIDBA==\n-----END OPENSSH PRIVATE KEY-----" >> id_rsa
+              - echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDAUh3TTNj/T1qspH5al6gGhiVA+9VZpXpFWukottL2E88/RBOTmqrUyTRTSODZMVRk6hqgJa9OAOg/vnFfsbAG8uFkcnv2WJ8Z/6A4tMJZH3WrA7BClyc1OpvhfqL1QZ4DCDC8fUoORoQZUVRwA3Fwikz3so7LWi3DF/ZV12et5dXLEN+6Tnshn9jdvSlUK4y3myz2rxFgo3ejRUImhhlxRd7hMoD0X96nDCXlxLUGz8rvLPbFJ3PUFxfREIAEJtrog9a/f+bQEVMROFgkWwIzu0TEc4yR+yb2VcESddr5l6Nagkony6B/XUvn7lXbhcL3mBJN2fgW+kh4793FXtyp ansible@manager" >> authorized_keys
+              - apt install nfs-kernel-server -y
+              - mkdir /home/ansible/cloud
+              - chmod 777 /home/ansible/cloud
+              - echo "/home/ansible/cloud *(rw,sync,no_root_squash,no_subtree_check)" >> /etc/exports
+              - exportfs -a
+              - service nfs-kernel-server restart
+              - apt install mpich -y
+                #- apt install sshpass -y
+                #- ssh-keygen -f -t -N ''
+                #- sshpass -p "alumno2020" ssh-copy-id -o StrictHostKeyChecking=no ansible@worker1
+                
+              
+        wait: yes
+      with_items: "{{ nodes }}"
+
+    - name: Cleanup IaaS auth token
+      ovirt_auth:
+        ovirt_auth: "{{ ovirt_auth }}"
+        state: absent

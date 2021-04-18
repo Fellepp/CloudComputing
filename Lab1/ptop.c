@@ -63,7 +63,7 @@ char **argv;
             }
         }
         /* Convert to half the round-trip time */
-        tmin = tmin / 2.0;
+        tmin = tmin*1.0e3 / 2.0;
         if (rank == 0) {
             double rate;
             if (tmin > 0) rate = n * sizeof(double) * 1.0e-6 /tmin;
