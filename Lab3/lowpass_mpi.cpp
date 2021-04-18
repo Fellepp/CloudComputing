@@ -136,7 +136,7 @@ Image applyFilter(Image &image, Matrix &filter, int times)
 
 int main(int agrc, char *argv[])
 {
-    int rank, size, tag, rc, newImageHeightNode, userWidth, finalHeight, firstHeight, failure;
+    int rank, size, tag, rc, newImageHeightNode, userWidth, finalHeight, firstHeight, comp;
 
     rc = MPI_Init(&agrc, &argv);
     rc = MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -144,19 +144,26 @@ int main(int agrc, char *argv[])
     MPI_Status status;
     tag = 1;
 
+    Image image;
+    Matrix filter;
+
     if(rank == 0) { //MASTER NODE
         cout << "Loading image..." << endl;
         Image image = loadImage(argv[1]);
+        Matrix filter = getLowPass(11,11);
 
         firstHeight = 0;
         newImageHeightNode = image[0].size()/(size-1);
-        printf("Image height: %d, heigh per node: %d", image[0].size(), newImageHeightNode);
         userWidth = image[0][0].size();
 
-        for (int n = 1; n <size; n ++) {
-            finalHeight = newImageHeightNode * n; 
+        for (int n = 1; n < size; n ++) {
+            if (newImageHeightNode*n + filter[0].size() > image[0].size()){
+                finalHeight = newImageHeightNode * n;
+            }else{
+                finalHeight = (newImageHeightNode * n + filter[0].size()); 
+            }
             for (int j = 0; j <3; j ++) {
-                for (int i = firstHeight; i <finalHeight; i ++) {
+                for (int i = firstHeight; i < finalHeight; i ++) {
                     rc = MPI_Send (&image [j][i][0], userWidth, MPI_DOUBLE, n, tag , MPI_COMM_WORLD); 
                 }
             } 
@@ -166,55 +173,67 @@ int main(int agrc, char *argv[])
 
     rc = MPI_Bcast(&userWidth, 1, MPI_INT, 0, MPI_COMM_WORLD); 
     rc = MPI_Bcast(&newImageHeightNode, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    printf("height per node: %d \n", newImageHeightNode);
 
     if (rank != 0){
         //Matrix filter = getGaussian(10, 10, 50.0);
-        cout << "Applying filter..." << endl;
+        printf("Process %d is applying filter...\n", rank);
         Matrix filter = getLowPass(11,11);
-        Image newImage (3, Matrix (newImageHeightNode, Array (userWidth)));
+        int tempHeight;
+
+        if (rank == size-1){
+            tempHeight = newImageHeightNode;
+        }else{
+            tempHeight = newImageHeightNode + filter[0].size();
+        }
+
+        Image newImage (3, Matrix (tempHeight, Array (userWidth)));
 
         // We receive the Image 
         for (int j = 0; j <3; j ++) {
-            for (int i = 0; i <newImage [0].size (); i++) {
-                rc = MPI_Recv (&newImage[j][i][0], newImage[0][0].size(), MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, &status);
+            for (int i = 0; i < newImage [0].size (); i++) {
+                rc = MPI_Recv (&newImage[j][i][0], userWidth, MPI_DOUBLE, 0, tag, MPI_COMM_WORLD, &status);
             }
         }
         Image tempImage = applyFilter(newImage, filter);
         
-        cout << "Passing this back\n";
+        if (tempImage[0].size() < newImageHeightNode){
+            tempHeight = tempImage[0].size();
+        }else{
+            tempHeight = newImageHeightNode;
+        }
+
+        printf("Process %d is done and will pass this back...\n", rank);
         for (int j = 0; j < 3; j ++) {
-            for (int i = 0; i < tempImage[0].size(); i ++) {
+            for (int i = 0; i < tempHeight; i ++) {
                 rc = MPI_Send (&tempImage[j][i][0], userWidth, MPI_DOUBLE, 0, 2 , MPI_COMM_WORLD); 
             }
         }
-        cout << "Done sending"; 
-        failure = newImageHeightNode-tempImage[0].size();
-        printf("I failed with a differance of %d \n", failure);
-        rc = MPI_Send(&failure, 1, MPI_INT, 0, 6, MPI_COMM_WORLD);
+        if (rank == size-1){
+            comp = newImageHeightNode-tempImage[0].size();
+            rc = MPI_Send(&comp, 1, MPI_INT, 0, 6, MPI_COMM_WORLD);
+        }
     }
 
     if (rank == 0){
-        cout << "In here now\n";
         finalHeight = 0;
         firstHeight = 0;
-        Image resImage (3, Matrix(((newImageHeightNode-failure)*(size-1)), Array (userWidth)));
 
-        rc = MPI_Recv(&failure, 1, MPI_INT, MPI_ANY_SOURCE, 6, MPI_COMM_WORLD, &status);
+        rc = MPI_Recv(&comp, 1, MPI_INT, (size-1), 6, MPI_COMM_WORLD, &status);
+        Image resImage (3, Matrix((newImageHeightNode*(size-1) - comp), Array (userWidth)));
 
-        cout << "Retrieving data\n";
         for (int n = 1; n < size; n++){
-            finalHeight = (newImageHeightNode-failure) * n;
+            if (n == size-1){
+                finalHeight = resImage[0].size();
+            }else{
+                finalHeight = newImageHeightNode * n;
+            }
             for (int d = 0; d < 3; d++){
                 for (int i = firstHeight; i < finalHeight; i++){
                     rc = MPI_Recv(&resImage[d][i][0], userWidth, MPI_DOUBLE, n, 2, MPI_COMM_WORLD, &status);
-                    printf("Got from rank: %d, d: %d, i: %d \n", n, d, i);
                 }
             }
-            firstHeight += (newImageHeightNode-failure);
+            firstHeight += (newImageHeightNode);
         }
-        cout << "Got all info";
-
         cout << "Saving image..." << endl;
 
         // Generamos el nombre del fichero 
