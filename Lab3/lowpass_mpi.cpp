@@ -148,6 +148,7 @@ int main(int agrc, char *argv[])
     Matrix filter;
 
     if(rank == 0) { //MASTER NODE
+        auto t1 = std::chrono::high_resolution_clock::now();
         cout << "Loading image..." << endl;
         Image image = loadImage(argv[1]);
         Matrix filter = getLowPass(11,11);
@@ -169,12 +170,56 @@ int main(int agrc, char *argv[])
             } 
             firstHeight += newImageHeightNode; 
         }
+        auto t1_1 = std::chrono::high_resolution_clock::now();
+
+        rc = MPI_Bcast(&userWidth, 1, MPI_INT, 0, MPI_COMM_WORLD); 
+        rc = MPI_Bcast(&newImageHeightNode, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+        finalHeight = 0;
+        firstHeight = 0;
+
+        rc = MPI_Recv(&comp, 1, MPI_INT, (size-1), 6, MPI_COMM_WORLD, &status);
+        Image resImage (3, Matrix((newImageHeightNode*(size-1) - comp), Array (userWidth)));
+
+        for (int n = 1; n < size; n++){
+            if (n == size-1){
+                finalHeight = resImage[0].size();
+            }else{
+                finalHeight = newImageHeightNode * n;
+            }
+            for (int d = 0; d < 3; d++){
+                for (int i = firstHeight; i < finalHeight; i++){
+                    rc = MPI_Recv(&resImage[d][i][0], userWidth, MPI_DOUBLE, n, 2, MPI_COMM_WORLD, &status);
+                }
+            }
+            firstHeight += (newImageHeightNode);
+        }
+
+        auto t2_1 = std::chrono::high_resolution_clock::now();
+        auto duration_1 = std::chrono::duration_cast<std::chrono::milliseconds>(t2_1 - t1_1).count();
+        std::cout << "Tiempo de c�mputo: " << (float) (duration_1 / 1000.0) << " sec" << std::endl;
+
+        cout << "Saving image..." << endl;
+
+        // Generamos el nombre del fichero 
+        stringstream ss;
+        ss << argv[2];
+        string str = ss.str();
+        string ficheroGuardar = str;
+    
+        saveImage(resImage, ficheroGuardar);
+        cout << "Done!" << endl;
+
+
+        auto t2 = std::chrono::high_resolution_clock::now();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+        std::cout << "Tiempo de ejecucion: " << (float) (duration / 1000.0) << " sec" << std::endl;
     }
 
-    rc = MPI_Bcast(&userWidth, 1, MPI_INT, 0, MPI_COMM_WORLD); 
-    rc = MPI_Bcast(&newImageHeightNode, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
     if (rank != 0){
+        rc = MPI_Bcast(&userWidth, 1, MPI_INT, 0, MPI_COMM_WORLD); 
+        rc = MPI_Bcast(&newImageHeightNode, 1, MPI_INT, 0, MPI_COMM_WORLD);
         //Matrix filter = getGaussian(10, 10, 50.0);
         printf("Process %d is applying filter...\n", rank);
         Matrix filter = getLowPass(11,11);
@@ -212,38 +257,6 @@ int main(int agrc, char *argv[])
             comp = newImageHeightNode-tempImage[0].size();
             rc = MPI_Send(&comp, 1, MPI_INT, 0, 6, MPI_COMM_WORLD);
         }
-    }
-
-    if (rank == 0){
-        finalHeight = 0;
-        firstHeight = 0;
-
-        rc = MPI_Recv(&comp, 1, MPI_INT, (size-1), 6, MPI_COMM_WORLD, &status);
-        Image resImage (3, Matrix((newImageHeightNode*(size-1) - comp), Array (userWidth)));
-
-        for (int n = 1; n < size; n++){
-            if (n == size-1){
-                finalHeight = resImage[0].size();
-            }else{
-                finalHeight = newImageHeightNode * n;
-            }
-            for (int d = 0; d < 3; d++){
-                for (int i = firstHeight; i < finalHeight; i++){
-                    rc = MPI_Recv(&resImage[d][i][0], userWidth, MPI_DOUBLE, n, 2, MPI_COMM_WORLD, &status);
-                }
-            }
-            firstHeight += (newImageHeightNode);
-        }
-        cout << "Saving image..." << endl;
-
-        // Generamos el nombre del fichero 
-        stringstream ss;
-        ss << argv[2];
-        string str = ss.str();
-        string ficheroGuardar = str;
-    
-        saveImage(resImage, ficheroGuardar);
-        cout << "Done!" << endl;
     }
     rc = MPI_Finalize();
 }
