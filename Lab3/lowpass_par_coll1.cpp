@@ -110,7 +110,7 @@ Image applyFilter(Image &image, Matrix &filter){
 
     Image newImage(3, Matrix(newImageHeight, Array(newImageWidth)));
 
-    #pragma omp parallel for num_threads(8) collapse (2) private(d, i, j,h,w)
+    #pragma omp parallel for num_threads(32) collapse (2) private(d, i, j,h,w)
     for (d=0 ; d<3 ; d++) {
         for (i=0 ; i<newImageHeight ; i++) {
             for (j=0 ; j<newImageWidth ; j++) {
