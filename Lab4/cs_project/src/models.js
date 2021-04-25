@@ -1,16 +1,37 @@
 import axios from 'axios'
 
-const baseURL = "http://127.0.0.1:5000"
+const baseURL = "http://127.0.0.1:5000";
 
-function sendImage(img) {
-    const formData = new FormData();
-    formData.append("image", img);
-    axios.post(baseURL + '/images', formData, {
-    headers: {
-        "Content-Type" : "image/png",
+function sendImage(img, id) {
+    return axios.post(baseURL + '/images?id=' + id, img, {
+        headers:{
+            'Content-Type': "image/png"
         }
     })
+    .then(function(response){
+        return response;
+    });
 }
-    
 
-export default sendImage
+function getImage(image_id) {
+    return axios.get(baseURL + '/images?id=' + image_id, { responseType: 'arraybuffer'})
+    .then(response => {
+        let blob = new Blob(
+            [response.data],
+            { type: response.headers['content-type'] }
+        )
+        let image = URL.createObjectURL(blob)
+        return image
+    });
+}
+
+function clearImage (image_id) {
+    return axios.get(baseURL + '/cleanup?id=' + image_id)
+    .then(response => {return response});
+}
+
+export {
+    sendImage,
+    getImage,
+    clearImage
+};
