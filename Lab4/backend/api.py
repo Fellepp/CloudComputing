@@ -33,7 +33,7 @@ def cleanData():
     return clearData(image_id)
 
 def process(image_id):
-    cmd = 'wsl.exe ./main.out images/' + image_id + '.png images/p_' + image_id + '.png'
+    cmd = 'wsl.exe mpirun -n 8 ./lowpass_mpi.out images/' + image_id + '.png images/p_' + image_id + '.png'
     os.system(cmd)
 
 def isProcessed(image_id):

@@ -3,6 +3,7 @@ import './App.css';
 import Upload from './components/upload';
 import Display from './components/displayImage';
 import { useState, useEffect } from 'react'
+import Service from './components/services'
 
 function App() {
   return (

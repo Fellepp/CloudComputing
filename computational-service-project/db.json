@@ -1,0 +1,19 @@
+{
+  "services": [
+      {
+          "id": 1,
+          "title": "Image processing sequencial",
+          "description": "Upload an image and wait for it to process"
+      },
+      {
+          "id": 2,
+          "title": "Image processing with OpenMP",
+          "description": "Upload an image and wait for it to process"
+      },
+      {
+          "id": 3,
+          "title": "Image processing with MPI",
+          "description": "Upload an image and wait for it to process"
+      }
+  ]
+}
